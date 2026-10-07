@@ -238,6 +238,7 @@ namespace icon
 	enum Kind
 	{
 		Disc,        /* the CD in the drive                        */
+		Floppy,      /* a 3.5" floppy in a drive                   */
 		Pad,         /* a controller - external or drawn           */
 		Keyboard,    /* the machine's keyboard                     */
 		Zoom,        /* how big the picture is drawn               */
@@ -333,6 +334,16 @@ void draw_icon(ImDrawList *dl,const ImVec2 &c,float r,int kind,ImU32 col)
 		dl->AddCircle(c,r*0.28f,col,16,lw*0.75f);
 		dl->PathArcTo(c,r*0.65f,-2.45f,-1.55f);
 		dl->PathStroke(col,false,lw*0.9f);
+		break;
+	case icon::Floppy: /* a 3.5" floppy: square body, metal shutter, label. */
+		{
+			const ImVec2 a(c.x-r,c.y-r*0.95f),b(c.x+r,c.y+r*0.95f);
+			dl->AddRect(a,b,col,2.0f,0,lw);
+			/* shutter across the top */
+			dl->AddRectFilled(ImVec2(c.x-r*0.40f,a.y+lw),ImVec2(c.x+r*0.40f,c.y-r*0.32f),col);
+			/* label on the lower half */
+			dl->AddRect(ImVec2(c.x-r*0.50f,c.y+r*0.08f),ImVec2(c.x+r*0.50f,b.y-r*0.12f),col,1.0f,0,lw*0.55f);
+		}
 		break;
 	case icon::Pad: /* the Marty's pad: a slab with a cross at one end and two
 	                 * buttons at the other. */
@@ -1176,6 +1187,7 @@ int main(int argc,char *argv[])
 	std::string message;
 	int loaded_game=-1;            /* index into `games`, -1 for nothing */
 	size_t loaded_disc=0;
+	std::string mounted_fd0,mounted_fd1;   /* floppies in the drives, for the icons */
 
 	auto rescan=[&]
 	{
@@ -1204,20 +1216,32 @@ int main(int argc,char *argv[])
 		std::vector <std::string> argStr={"retrotowns",rom_dir};
 		if(!path.empty())
 		{
-			/* A boot or user disk rides beside the CD: put it in FD0 first,
-			 * because the machine boots the floppy and the floppy hands over
-			 * to the disc.  A floppy image is itself the FD0. */
+			/* A boot disk rides in FD0 and a user disk in FD1, both mounted
+			 * before the CD: the machine boots the floppy and the floppy hands
+			 * over to the disc.  A floppy image on the shelf is itself FD0. */
+			mounted_fd0.clear();
+			mounted_fd1.clear();
 			const bool is_floppy=towns::Media::Floppy==towns::media_of(path);
-			if(!is_floppy)
+			if(is_floppy)
+			{
+				mounted_fd0=path;
+			}
+			else
 			{
 				std::string dir=path;
 				const size_t slash=dir.find_last_of("/\\");
 				dir=(std::string::npos==slash) ? std::string(".") : dir.substr(0,slash);
-				const std::string boot=towns::best_floppy(dir);
-				if(!boot.empty())
+				mounted_fd0=towns::best_floppy(dir);
+				mounted_fd1=towns::best_user_floppy(dir);
+				if(!mounted_fd0.empty())
 				{
 					argStr.push_back("-FD0");
-					argStr.push_back(boot);
+					argStr.push_back(mounted_fd0);
+				}
+				if(!mounted_fd1.empty())
+				{
+					argStr.push_back("-FD1");
+					argStr.push_back(mounted_fd1);
 				}
 			}
 			argStr.push_back(is_floppy ? "-FD0" : "-CD");
@@ -1579,6 +1603,8 @@ int main(int argc,char *argv[])
 			const std::string staged_dir=towns::stage_dir_for(boot_path,towns::folder_for(root,"cd"));
 			SDL_RemovePath(staged_dir.c_str());
 		}
+		mounted_fd0.clear();
+		mounted_fd1.clear();
 		ftowns_stop();
 	};
 	/* Redone when the folder changes, not every frame: it is a disk walk, and
@@ -2453,8 +2479,20 @@ int main(int argc,char *argv[])
 				const float mw=96.0f,mh=140.0f;
 				draw_towns_computer(dl,ImVec2(cursor.x+8.0f,cursor.y),
 				                    ImVec2(mw,mh),IM_COL32(0x34,0xD9,0xC4,255));
-				draw_icon(dl,ImVec2(cursor.x+mw+44.0f,cursor.y+mh*0.30f),22.0f,
-				          icon::Disc,IM_COL32(0x9a,0xa4,0xb0,255));
+				/* The three drives as glyphs: CD, FD0 and FD1.  A lit one is
+				 * the honest answer to "is the media in yet?". */
+				{
+					const ImU32 on =IM_COL32(0x34,0xD9,0xC4,255);
+					const ImU32 off=IM_COL32(0x3a,0x3f,0x48,255);
+					const bool cd_loaded=0<=loaded_game && loaded_game<(int)games.size();
+					float ix=cursor.x+mw+44.0f;
+					const float iy=cursor.y+mh*0.30f;
+					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Disc,cd_loaded?on:off);
+					ix+=52.0f;
+					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,mounted_fd0.empty()?off:on);
+					ix+=52.0f;
+					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,mounted_fd1.empty()?off:on);
+				}
 				ImGui::Dummy(ImVec2(0.0f,mh+12.0f));
 			}
 			/* The drive, drawn on the right: what is in it, and whether there is

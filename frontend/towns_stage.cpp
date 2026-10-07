@@ -440,12 +440,21 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 		}
 		ok = copy_entry(z,name,dir,&done,total,progress) && ok;
 	}
-	if(!boot.empty())
+	/* Record the boot disk (FD0) and the user disk (FD1) separately, so the
+	 * launcher can mount both before the CD. */
+	for(const std::string &f : boot)
 	{
-		SDL_IOStream *m=SDL_IOFromFile((dir+"/.retrotowns-boot").c_str(),"wb");
+		const bool is_user=std::string::npos!=lower(leaf_of(f)).find("user");
+		const char *mark=is_user ? ".retrotowns-user" : ".retrotowns-boot";
+		SDL_PathInfo probe;
+		if(SDL_GetPathInfo((dir+"/"+mark).c_str(),&probe))
+		{
+			continue;   /* the first of each kind wins */
+		}
+		SDL_IOStream *m=SDL_IOFromFile((dir+"/"+mark).c_str(),"wb");
 		if(m)
 		{
-			const std::string leaf=leaf_of(boot[0]);
+			const std::string leaf=leaf_of(f);
 			SDL_WriteIO(m,leaf.data(),leaf.size());
 			SDL_CloseIO(m);
 		}
@@ -761,6 +770,30 @@ std::string best_floppy(const std::string &dir)
 		if(!hit.empty())
 		{
 			return hit;
+		}
+	}
+	return std::string();
+}
+
+std::string best_user_floppy(const std::string &dir)
+{
+	/* A user disk rides in FD1: data the game reads and writes, never a boot
+	 * sector.  Only an extraction records it; a loose floppy on the shelf is
+	 * treated as a boot disk. */
+	SDL_IOStream *m=SDL_IOFromFile((dir+"/.retrotowns-user").c_str(),"rb");
+	if(m)
+	{
+		char buf[512]={};
+		const size_t got=SDL_ReadIO(m,buf,sizeof(buf)-1);
+		SDL_CloseIO(m);
+		if(0<got)
+		{
+			const std::string p=dir+"/"+std::string(buf,got);
+			SDL_PathInfo info;
+			if(SDL_GetPathInfo(p.c_str(),&info) && SDL_PATHTYPE_FILE==info.type)
+			{
+				return p;
+			}
 		}
 	}
 	return std::string();
