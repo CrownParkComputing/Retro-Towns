@@ -55,4 +55,4 @@ Retro-Saturn checkout when it is not vendored here.
 ## License
 
 The frontend, bridge and build scripts are Crown Park Computing Ltd,
-GPL-3.0-or-later. The Tsugaru core is GPL-3.0 (see `core/LICENSE`).
+GPL-3.0-or-later. The Tsugaru core is BSD-3-Clause (see `core/LICENSE`).
