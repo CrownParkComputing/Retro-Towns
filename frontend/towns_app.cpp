@@ -2480,18 +2480,36 @@ int main(int argc,char *argv[])
 				draw_towns_computer(dl,ImVec2(cursor.x+8.0f,cursor.y),
 				                    ImVec2(mw,mh),IM_COL32(0x34,0xD9,0xC4,255));
 				/* The three drives as glyphs: CD, FD0 and FD1.  A lit one is
-				 * the honest answer to "is the media in yet?". */
+				 * the honest answer to "is the media in yet?".  Read from the
+				 * loaded disc's folder, so it is true before and after boot. */
 				{
 					const ImU32 on =IM_COL32(0x34,0xD9,0xC4,255);
-					const ImU32 off=IM_COL32(0x3a,0x3f,0x48,255);
+					const ImU32 off=IM_COL32(0x5a,0x61,0x70,255);
 					const bool cd_loaded=0<=loaded_game && loaded_game<(int)games.size();
+					bool fd0=false,fd1=false;
+					if(cd_loaded)
+					{
+						const std::string dp=games[(size_t)loaded_game].disc(loaded_disc)->path;
+						if(towns::Media::Floppy==towns::media_of(dp))
+						{
+							fd0=true;   /* the disc is itself a floppy */
+						}
+						else
+						{
+							std::string dir=dp;
+							const size_t slash=dir.find_last_of("/\\");
+							dir=(std::string::npos==slash) ? std::string(".") : dir.substr(0,slash);
+							fd0=!towns::best_floppy(dir).empty();
+							fd1=!towns::best_user_floppy(dir).empty();
+						}
+					}
 					float ix=cursor.x+mw+44.0f;
 					const float iy=cursor.y+mh*0.30f;
 					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Disc,cd_loaded?on:off);
 					ix+=52.0f;
-					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,mounted_fd0.empty()?off:on);
+					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,fd0?on:off);
 					ix+=52.0f;
-					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,mounted_fd1.empty()?off:on);
+					draw_icon(dl,ImVec2(ix,iy),22.0f,icon::Floppy,fd1?on:off);
 				}
 				ImGui::Dummy(ImVec2(0.0f,mh+12.0f));
 			}
