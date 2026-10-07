@@ -2321,6 +2321,8 @@ bool D77File::SetRawBinary(long long int nByte,const unsigned char byteData[],bo
 		mediaType=      D77_MEDIATYPE_2HD;
 		break;
 	case 1261568:
+	case 1281280: /* 1232KB data + 19712 bytes of trailing 0xE5 padding, as some
+	                FM TOWNS boot-disk rips are stored. */
 		bytesPerSector= 1024;
 		sectorsPerTrack=8;
 		numTracks=      77;
@@ -2349,7 +2351,7 @@ bool D77File::SetRawBinary(long long int nByte,const unsigned char byteData[],bo
 	}
 
 	auto verifySize=bytesPerSector*sectorsPerTrack*numTracks*2;
-	if(verifySize!=nByte)
+	if(nByte<verifySize)
 	{
 		printf("%s %d\n",__FUNCTION__,__LINE__);
 		printf("Error.  Did not identify disk geometry correctly.\n");
@@ -2385,7 +2387,7 @@ bool D77File::SetRawBinary(long long int nByte,const unsigned char byteData[],bo
 
 	diskPtr->ClearModified();
 
-	if(imgPtr!=nByte)
+	if(imgPtr!=verifySize)
 	{
 		printf("%s %d\n",__FUNCTION__,__LINE__);
 		printf("Error.  Total number of bytes used is incorrect.\n");
