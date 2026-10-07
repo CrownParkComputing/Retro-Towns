@@ -1204,7 +1204,23 @@ int main(int argc,char *argv[])
 		std::vector <std::string> argStr={"retrotowns",rom_dir};
 		if(!path.empty())
 		{
-			argStr.push_back(towns::Media::Floppy==towns::media_of(path) ? "-FD0" : "-CD");
+			/* A boot or user disk rides beside the CD: put it in FD0 first,
+			 * because the machine boots the floppy and the floppy hands over
+			 * to the disc.  A floppy image is itself the FD0. */
+			const bool is_floppy=towns::Media::Floppy==towns::media_of(path);
+			if(!is_floppy)
+			{
+				std::string dir=path;
+				const size_t slash=dir.find_last_of("/\\");
+				dir=(std::string::npos==slash) ? std::string(".") : dir.substr(0,slash);
+				const std::string boot=towns::best_floppy(dir);
+				if(!boot.empty())
+				{
+					argStr.push_back("-FD0");
+					argStr.push_back(boot);
+				}
+			}
+			argStr.push_back(is_floppy ? "-FD0" : "-CD");
 			argStr.push_back(path);
 		}
 		/* A zero or blank setting means "say nothing", which is what the core

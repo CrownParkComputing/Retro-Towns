@@ -43,5 +43,11 @@ std::string stage_dir_for(const std::string &image,const std::string &cd_dir);
  * unpacking Turbo OutRun does not leave two of it behind. */
 bool is_staged(const std::string &image,const std::string &cd_dir);
 
+/* The floppy image (.d77/.d88/.xdf) a game folder holds, or empty.  A boot or
+ * user disk rides beside the CD and must be in FD0 before the CD is mounted,
+ * because the machine boots the floppy and the floppy then hands over to the
+ * disc. */
+std::string best_floppy(const std::string &dir);
+
 } /* namespace towns */
 #endif /* TOWNS_STAGE_H */

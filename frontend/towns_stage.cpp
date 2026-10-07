@@ -256,6 +256,7 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 	}
 
 	std::vector <std::string> images;   /* disc files, by archive name */
+	std::vector <std::string> floppies; /* boot/user disks, by archive name */
 	std::string sheet,sheet_name;       /* the .cue's own text */
 	int64_t sheet_size=0;
 
@@ -291,6 +292,10 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 			{
 				images.push_back(name);
 			}
+			else if(".d77"==ext || ".d88"==ext || ".xdf"==ext)
+			{
+				floppies.push_back(name);
+			}
 		}
 		while(UNZ_OK==unzGoToNextFile(z));
 	}
@@ -325,6 +330,15 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 			total+=(int64_t)info.uncompressed_size;
 		}
 	}
+	for(const std::string &name : floppies)
+	{
+		unz_file_info64 info;
+		if(UNZ_OK==unzLocateFile(z,name.c_str(),0) &&
+		   UNZ_OK==unzGetCurrentFileInfo64(z,&info,nullptr,0,nullptr,0,nullptr,0))
+		{
+			total+=(int64_t)info.uncompressed_size;
+		}
+	}
 
 	if(!SDL_CreateDirectory(dir.c_str()) && !is_dir(dir))
 	{
@@ -351,6 +365,14 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 		}
 	}
 	for(const std::string &name : want)
+	{
+		if(UNZ_OK!=unzLocateFile(z,name.c_str(),0))
+		{
+			continue;
+		}
+		ok = copy_entry(z,name,dir,&done,total,progress) && ok;
+	}
+	for(const std::string &name : floppies)
 	{
 		if(UNZ_OK!=unzLocateFile(z,name.c_str(),0))
 		{
@@ -617,6 +639,43 @@ std::string chd_disc(const std::string &chd,const std::string &dir,
 #endif /* TOWNS_HAVE_LIBCHDR */
 
 } /* namespace */
+
+std::string best_floppy(const std::string &dir)
+{
+	/* A boot or user disk is a floppy beside the CD, named .d77, .d88 or .xdf.
+	 * The core mounts it in FD0 before the CD, so the bootloader can run and
+	 * then hand control to the disc. */
+	static const char *const kFloppy[]={".d77",".d88",".xdf",nullptr};
+	for(const char *const *e=kFloppy; *e; ++e)
+	{
+		const std::string pattern="*"+std::string(*e);
+		int n=0;
+		char **found=SDL_GlobDirectory(dir.c_str(),pattern.c_str(),
+		                               SDL_GLOB_CASEINSENSITIVE,&n);
+		if(nullptr==found)
+		{
+			continue;
+		}
+		std::string hit;
+		for(int i=0; i<n && found[i]; ++i)
+		{
+			if(nullptr!=SDL_strchr(found[i],'/'))
+			{
+				continue;   /* one level only */
+			}
+			if(hit.empty())
+			{
+				hit=dir+"/"+found[i];
+			}
+		}
+		SDL_free(found);
+		if(!hit.empty())
+		{
+			return hit;
+		}
+	}
+	return std::string();
+}
 
 std::string stage_dir_for(const std::string &image,const std::string &cd_dir)
 {
