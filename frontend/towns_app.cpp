@@ -1143,8 +1143,18 @@ int main(int argc,char *argv[])
 	/* Resolved once here, then by the wizard whenever the folder changes. */
 	auto find_rom=[&]
 	{
-		const std::string found=towns::find_bios(root);
-		rom_dir=rom_override.empty() ? found : rom_override;
+		if(rom_override.empty() && towns::is_saf_root(root))
+		{
+			const std::string staged_bios=
+			    towns::saf_stage_bios(root,cfg_dir+"cache/bios");
+			rom_dir=towns::check_bios(staged_bios).ok ? staged_bios
+			                                         : std::string();
+		}
+		else
+		{
+			const std::string found=towns::find_bios(root);
+			rom_dir=rom_override.empty() ? found : rom_override;
+		}
 	};
 	find_rom();
 	/* No BIOS is not a reason to refuse to start.  An FM TOWNS needs Fujitsu's
@@ -1169,7 +1179,9 @@ int main(int argc,char *argv[])
 
 	auto rescan=[&]
 	{
-		games=towns::scan_library(root);
+		games=towns::is_saf_root(root)
+		    ? towns::scan_library_saf(root)
+		    : towns::scan_library(root);
 		if(games.empty())
 		{
 			message=root.empty()
@@ -1542,10 +1554,11 @@ int main(int argc,char *argv[])
 	SDL_strlcpy(root_edit,root.c_str(),sizeof(root_edit));
 	bool boot_now=false;
 	std::string boot_path;
+	towns::Disc boot_disc;            /* the disc being booted, SAF fields and all */
 	bool translate_to_english=false;
 	auto stop_machine=[&]()
 	{
-		if(!boot_path.empty() && towns::is_archived_image(boot_path))
+		if(!boot_path.empty() && !towns::is_saf_root(root) && towns::is_archived_image(boot_path))
 		{
 			const std::string staged_dir=towns::stage_dir_for(boot_path,towns::folder_for(root,"cd"));
 			SDL_RemovePath(staged_dir.c_str());
@@ -1558,14 +1571,29 @@ int main(int argc,char *argv[])
 	auto recheck=[&]
 	{
 		find_rom();
-		bios=towns::check_bios(towns::bios_candidate(root));
+		if(towns::is_saf_root(root))
+		{
+			const std::string staged_bios=towns::saf_stage_bios(root,cfg_dir+"cache/bios");
+			bios=towns::check_bios(staged_bios);
+		}
+		else
+		{
+			bios=towns::check_bios(towns::bios_candidate(root));
+		}
 	};
 	recheck();
 	/* Make the bios/cd/zip folders the wizard promises, when they are missing.
 	 * Idempotent, and only when a folder is actually configured. */
 	if(!root.empty())
 	{
-		towns::ensure_layout(root);
+		if(towns::is_saf_root(root))
+		{
+			towns::saf_ensure_layout(root);
+		}
+		else
+		{
+			towns::ensure_layout(root);
+		}
 	}
 
 	/* Moving the library is not a two-step process.  A folder chosen from the
@@ -1587,7 +1615,14 @@ int main(int argc,char *argv[])
 		cfg.library_root=root;
 		SDL_strlcpy(root_edit,root.c_str(),sizeof(root_edit));
 		recheck();
-		towns::ensure_layout(root);
+		if(towns::is_saf_root(root))
+		{
+			towns::saf_ensure_layout(root);
+		}
+		else
+		{
+			towns::ensure_layout(root);
+		}
 		save_app_config(cfg_path,cfg);
 		rescan();
 		if(!rom_dir.empty())
@@ -1629,8 +1664,54 @@ int main(int argc,char *argv[])
 		pic_w=pic_h=0;
 	};
 
-	auto begin_boot=[&](const std::string &path)
+	auto begin_boot=[&](const towns::Disc &disc)
 	{
+		const std::string path=disc.path;
+
+		/* A disc behind SAF is copied into the cache before anything reads
+		 * it - the same "hundreds of megabytes" trade as unpacking, so it
+		 * runs on the same thread. */
+		if(disc.saf_backed())
+		{
+			if(stage_busy)
+			{
+				return;
+			}
+			const std::string cache=cfg_dir+"cache";
+			const std::string cd_dir=cache+"/cd";
+			stage_what=disc.saf_name;
+			stage_done=0;
+			stage_total=0;
+			staged.clear();
+			staged_err.clear();
+			stage_busy=true;
+			if(stage_thread.joinable())
+			{
+				stage_thread.join();
+			}
+			stage_thread=std::thread(
+			    [disc,cache,cd_dir,&staged,&staged_err,&stage_busy,&stage_done,&stage_total]
+			    {
+			    std::string p=towns::saf_stage(disc.saf_uri,disc.saf_sub,disc.saf_name,cache);
+			    if(p.empty())
+			    {
+			    staged_err="Could not read \""+disc.saf_name+"\" from the folder.";
+			    }
+			    else if(towns::is_archived_image(p))
+			    {
+			    p=towns::stage_image(p,cd_dir,staged_err,
+			        [&stage_done,&stage_total](std::int64_t done,std::int64_t total)
+			        {
+			        stage_done.store(done);
+			        stage_total.store(total);
+			        });
+			    }
+			    staged=p;
+			    stage_busy.store(false);
+			    });
+			return;
+		}
+
 		if(!towns::is_archived_image(path))
 		{
 			finish_boot(launch(path));
@@ -1867,15 +1948,15 @@ int main(int argc,char *argv[])
 						{
 							ImGui::BulletText("%s",t.name.c_str());
 							ImGui::SameLine();
-							if(!t.path.empty())
+							if(ImGui::Button(("Use##"+t.uri).c_str()))
 							{
-								if(ImGui::Button(("Use##"+t.uri).c_str()))
-								{
-									apply_root(t.path);
-									if(!root.empty()) wiz=Wiz::Layout;
-								}
-								ImGui::SameLine();
+								/* Prefer the real path when the device lets us see one
+								 * (it can read game folders); otherwise use the
+								 * content:// handle through SAF. */
+								apply_root(t.path.empty() ? t.uri : t.path);
+								if(!root.empty()) wiz=Wiz::Layout;
 							}
+							ImGui::SameLine();
 							std::string fbtn="Forget##"+t.uri;
 							if(ImGui::Button(fbtn.c_str()))
 							{
@@ -2160,6 +2241,9 @@ int main(int argc,char *argv[])
 					             ? games[loaded_game].disc(loaded_disc)->path
 					             : std::string())
 					          : std::string();
+					boot_disc=0<=loaded_game && games[loaded_game].disc(loaded_disc)
+					          ? *games[loaded_game].disc(loaded_disc)
+					          : towns::Disc{};
 					boot_now=true;
 					message="Restarting the machine with the new settings.";
 				}
@@ -2424,6 +2508,7 @@ int main(int argc,char *argv[])
 					                 ImVec2(ui_px(220.0f),0.0f)))
 					{
 						boot_path=g.disc(loaded_disc)->path;
+						boot_disc=*g.disc(loaded_disc);
 						boot_now=true;
 						cfg.last_disc=boot_path;
 						save_app_config(cfg_path,cfg);
@@ -2625,7 +2710,7 @@ int main(int argc,char *argv[])
 		if(boot_now)
 		{
 			boot_now=false;
-			begin_boot(boot_path);
+			begin_boot(boot_disc);
 		}
 		if(stage_thread.joinable() && !stage_busy.load())
 		{
@@ -2637,13 +2722,23 @@ int main(int argc,char *argv[])
 			}
 			else
 			{
-				/* The unpacked folder is the game now, so the shelf is redrawn
-				 * around it - the archive stays where it is, but as packaging
-				 * rather than as a second disc. */
-				rescan();
-				locate(staged);
-				cfg.last_disc=staged;
-				finish_boot(launch(staged));
+				if(boot_disc.saf_backed())
+				{
+					/* A SAF disc is launched from the cache, not from the
+					 * shelf - the shelf keeps the content:// handle it was
+					 * built from, so there is nothing to re-find here. */
+					finish_boot(launch(staged));
+				}
+				else
+				{
+					/* The unpacked folder is the game now, so the shelf is
+					 * redrawn around it - the archive stays where it is, but
+					 * as packaging rather than as a second disc. */
+					rescan();
+					locate(staged);
+					cfg.last_disc=staged;
+					finish_boot(launch(staged));
+				}
 			}
 		}
 

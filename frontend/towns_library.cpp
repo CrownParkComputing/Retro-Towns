@@ -396,4 +396,76 @@ std::vector <Game> scan_library(const std::string &parent)
 	return games;
 }
 
+std::vector <Game> scan_library_saf(const std::string &uri)
+{
+	std::vector <Game> games;
+	if(uri.empty())
+	{
+		return games;
+	}
+
+	std::map <std::string,Game> byTitle;
+
+	/* The same four shelves scan_library walks; "" is the parent itself.
+	 * saf_list skips directories, so a game that ships as a folder of tracks
+	 * is not seen here - the filesystem path covers that shape. */
+	for(const char *sub : {"","cd","chd","zip"})
+	{
+		for(const SafEntry &e : saf_list(uri,sub))
+		{
+			if(!is_disc_image(e.name))
+			{
+				continue;
+			}
+			std::string title;
+			const int number=disc_number_of(e.name,title);
+			if(title.empty())
+			{
+				title=e.name;
+			}
+
+			Disc d;
+			d.file=e.name;
+			d.number=number;
+			d.media=media_of(e.name);
+			d.saf_uri=uri;
+			d.saf_sub=sub;
+			d.saf_name=e.name;
+			d.path="saf://"+uri+"/"+sub+"/"+e.name;
+
+			Game &g=byTitle[title];
+			if(g.title.empty())
+			{
+				g.title=title;
+				const char c=(char)SDL_toupper((unsigned char)title[0]);
+				g.initial=('A'<=c && c<='Z') ? c : '#';
+				g.media=d.media;
+			}
+			g.discs.push_back(std::move(d));
+		}
+	}
+
+	games.reserve(byTitle.size());
+	for(auto &kv : byTitle)
+	{
+		Game &g=kv.second;
+		std::sort(g.discs.begin(),g.discs.end(),
+		          [](const Disc &a,const Disc &b)
+		          {
+		          if(a.number!=b.number)
+		          {
+		          return a.number<b.number;
+		          }
+		          return 0>SDL_strcasecmp(a.file.c_str(),b.file.c_str());
+		          });
+		games.push_back(std::move(g));
+	}
+	std::sort(games.begin(),games.end(),[](const Game &a,const Game &b)
+	          {
+	          return 0>SDL_strcasecmp(a.title.c_str(),b.title.c_str());
+	          });
+	return games;
+}
+
+
 } /* namespace towns */

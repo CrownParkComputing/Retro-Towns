@@ -73,6 +73,11 @@ struct BiosCheck {
  * nothing in it rather than a failure, because it is drawn as a checklist. */
 BiosCheck check_bios(const std::string &dir);
 
+/* True when [s] is a Storage Access Framework content:// handle rather than a
+ * filesystem path.  Such a library is read through the SAF bridge, not by
+ * SDL's filesystem calls. */
+bool is_saf_root(const std::string &s);
+
 /* ---- where things are ---- */
 
 /*
@@ -176,6 +181,12 @@ std::vector<SafEntry> saf_list(const std::string &uri, const std::string &sub);
 std::string saf_stage(const std::string &uri, const std::string &sub,
                       const std::string &name, const std::string &dest_dir);
 int saf_stage_progress();
+
+/* Stage the BIOS folder (and any loose ROM files at the root) into [dest_dir]
+ * and return [dest_dir], so the ordinary filesystem BIOS check can read it.
+ * Always returns a real directory, even when nothing was staged, so the
+ * checklist still shows every missing ROM. */
+std::string saf_stage_bios(const std::string &uri, const std::string &dest_dir);
 
 } /* namespace towns */
 

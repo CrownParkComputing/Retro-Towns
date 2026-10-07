@@ -42,6 +42,13 @@ struct Disc
 	std::string file;       /* the file's own name, for when the title is bare */
 	int         number=0;   /* 1-based disc number, 0 when the name says none  */
 	Media       media=Media::Cd;
+
+	/* When the disc lives behind the Storage Access Framework, these name the
+	 * tree and the file inside it; empty for a filesystem path. */
+	std::string saf_uri;
+	std::string saf_sub;    /* "", "cd", "chd" or "zip" */
+	std::string saf_name;
+	bool saf_backed() const { return !saf_uri.empty(); }
 };
 
 /* One game: its title, and every disc that belongs to it. */
@@ -85,6 +92,12 @@ struct Game
  * avoid.
  */
 std::vector <Game> scan_library(const std::string &parent);
+
+/* The same shelf, read from a Storage Access Framework tree (content://) that
+ * has no filesystem path.  Sees the flat images and archives in the parent,
+ * cd/, chd/ and zip/; a game that ships as a folder of tracks is not reached
+ * here, because SAF lists files one level at a time. */
+std::vector <Game> scan_library_saf(const std::string &uri);
 
 /* True when the core cannot mount this path itself and it has to be unpacked
  * first - a .zip, or a .chd, which Tsugaru has no reader for at all. */

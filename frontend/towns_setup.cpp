@@ -119,6 +119,11 @@ BiosCheck check_bios(const std::string &dir)
     return c;
 }
 
+bool is_saf_root(const std::string &s)
+{
+    return 0 == s.rfind("content://", 0);
+}
+
 std::string existing_folder_for(const std::string &root,const std::string &kind)
 {
 	static const struct {const char *kind;const char *names[8];} kAlias[]={
@@ -597,6 +602,28 @@ std::string saf_stage(const std::string &uri, const std::string &sub,
 
 int saf_stage_progress() { return call_int("stageProgress"); }
 
+std::string saf_stage_bios(const std::string &uri, const std::string &dest_dir)
+{
+    SDL_CreateDirectory(dest_dir.c_str());
+
+    /* The bios/ folder whole - it is a handful of ROMs, never a CD image. */
+    for (const SafEntry &e : saf_list(uri, "bios")) {
+        saf_stage(uri, "bios", e.name, dest_dir);
+    }
+
+    /* Loose ROM files at the root, for a collection nobody has sorted yet. */
+    for (const SafEntry &e : saf_list(uri, "")) {
+        bool rom = false;
+        for (const RomNeed &need : rom_needs()) {
+            if (0 == SDL_strcasecmp(e.name.c_str(), need.name)) { rom = true; break; }
+        }
+        if (rom) {
+            saf_stage(uri, "", e.name, dest_dir);
+        }
+    }
+    return dest_dir;
+}
+
 std::string saf_folder_name(const std::string &uri, const std::string &kind)
 {
     const std::string n = call_str(
@@ -619,6 +646,7 @@ std::string saf_folder_name(const std::string &, const std::string &k) { return 
 std::vector<SafEntry> saf_list(const std::string &, const std::string &) { return {}; }
 std::string saf_stage(const std::string &, const std::string &, const std::string &, const std::string &) { return {}; }
 int saf_stage_progress() { return -1; }
+std::string saf_stage_bios(const std::string &, const std::string &) { return {}; }
 } /* namespace towns */
 
 #endif
