@@ -21,7 +21,14 @@
 *.iml
 /imgui.ini
 local.properties
+key.properties
+*.jks
+*.keystore
 
 # --- OS noise ---
 .DS_Store
 Thumbs.db
+
+# --- Python ---
+__pycache__/
+*.pyc
