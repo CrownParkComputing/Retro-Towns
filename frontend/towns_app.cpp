@@ -268,10 +268,12 @@ void apply_style()
 	s.FrameRounding=3.0f;
 	s.GrabRounding=3.0f;
 	s.TabRounding=3.0f;
-	s.FramePadding=ImVec2(10.0f,7.0f);
-	s.ItemSpacing=ImVec2(9.0f,7.0f);
-	s.WindowPadding=ImVec2(14.0f,12.0f);
-	s.ScrollbarSize=14.0f;
+	/* Modest padding: the whole style is scaled to the real font size next, so
+	 * these only need to be right for the 13-pixel default. */
+	s.FramePadding=ImVec2(6.0f,4.0f);
+	s.ItemSpacing=ImVec2(8.0f,5.0f);
+	s.WindowPadding=ImVec2(10.0f,8.0f);
+	s.ScrollbarSize=12.0f;
 
 	ImVec4 *c=s.Colors;
 	const ImVec4 ink   =ImVec4(0.03f,0.03f,0.05f,1.00f);
@@ -1706,7 +1708,10 @@ int main(int argc,char *argv[])
 			face=Face::Setup;
 		}
 
-		const float rail_w=210.0f;
+		/* Wide enough for the wordmark, which is the widest thing in the rail.
+		 * Fixed pixels clip when the font is scaled up, so measure it. */
+		const float rail_w=ImGui::CalcTextSize("RETRO-TOWNS").x
+		                 + ImGui::GetStyle().WindowPadding.x*2.0f;
 		ImGui::BeginChild("##rail",ImVec2(rail_w,0),ImGuiChildFlags_Borders);
 		ImGui::Spacing();
 		{
@@ -2184,6 +2189,11 @@ int main(int argc,char *argv[])
 				const float gap=ImGui::GetStyle().ItemSpacing.x;
 				const float avail=ImGui::GetContentRegionAvail().x;
 				const float cell=(avail-gap*(kSlots-1))/(float)kSlots;
+				/* Twenty-seven letters have to share one line: drop the
+				 * horizontal frame padding so the glyphs, not the padding, are
+				 * what the cells hold. */
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+				                    ImVec2(0.0f,ImGui::GetStyle().FramePadding.y));
 				for(int slot=0; slot<kSlots; ++slot)
 				{
 					const char c=(0==slot) ? '#' : (char)('A'+slot-1);
@@ -2201,6 +2211,7 @@ int main(int argc,char *argv[])
 					}
 					ImGui::PopStyleColor();
 				}
+				ImGui::PopStyleVar();
 			}
 			ImGui::Separator();
 
