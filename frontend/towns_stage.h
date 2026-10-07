@@ -49,5 +49,10 @@ bool is_staged(const std::string &image,const std::string &cd_dir);
  * disc. */
 std::string best_floppy(const std::string &dir);
 
+/* Remove every folder under [cd_dir] that was extracted before the boot-disk
+ * code, so the next launch re-extracts the archive whole instead of mounting a
+ * floppy-less disc.  Safe to call on every rescan. */
+void clean_stale_stages(const std::string &cd_dir);
+
 } /* namespace towns */
 #endif /* TOWNS_STAGE_H */

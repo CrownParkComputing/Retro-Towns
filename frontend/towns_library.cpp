@@ -331,6 +331,10 @@ std::vector <Game> scan_library(const std::string &parent)
 	const std::string chd  =folder_for(parent,"chd");
 	const std::string zip  =folder_for(parent,"zip");
 
+	/* Extractions from before the boot-disk code are floppy-less and stale;
+	 * drop them so the archive is re-unpacked whole on the next boot. */
+	clean_stale_stages(cd);
+
 	/* Seen from the parent, these are the shelves - not titles. */
 	std::set <std::string> skip;
 	for(const std::string &s : {bios,cd,chd,zip})

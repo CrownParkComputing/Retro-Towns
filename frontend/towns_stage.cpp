@@ -131,19 +131,49 @@ bool is_dir(const std::string &path)
 bool already_staged(const std::string &dir)
 {
 	SDL_PathInfo info;
-	const std::string mark=dir+"/.retrotowns-staged";
+	const std::string mark=dir+"/.retrotowns-staged-v2";
 	return SDL_GetPathInfo(mark.c_str(),&info) && SDL_PATHTYPE_FILE==info.type;
 }
 
 void mark_staged(const std::string &dir,const std::string &from)
 {
-	SDL_IOStream *out=SDL_IOFromFile((dir+"/.retrotowns-staged").c_str(),"wb");
+	SDL_IOStream *out=SDL_IOFromFile((dir+"/.retrotowns-staged-v2").c_str(),"wb");
 	if(nullptr==out)
 	{
 		return;
 	}
 	SDL_WriteIO(out,from.data(),from.size());
 	SDL_CloseIO(out);
+}
+
+/* Recursively delete a cache folder.  SDL removes one file or one empty
+ * directory, so the tree is unwound from the leaves. */
+void remove_tree(const std::string &dir)
+{
+	int n=0;
+	char **found=SDL_GlobDirectory(dir.c_str(),nullptr,SDL_GLOB_CASEINSENSITIVE,&n);
+	if(found)
+	{
+		for(int i=0; i<n && found[i]; ++i)
+		{
+			if(nullptr!=SDL_strchr(found[i],'/'))
+			{
+				continue;
+			}
+			const std::string p=dir+"/"+found[i];
+			SDL_PathInfo info;
+			if(SDL_GetPathInfo(p.c_str(),&info) && SDL_PATHTYPE_DIRECTORY==info.type)
+			{
+				remove_tree(p);
+			}
+			else
+			{
+				SDL_RemovePath(p.c_str());
+			}
+		}
+		SDL_free(found);
+	}
+	SDL_RemovePath(dir.c_str());
 }
 
 #ifdef TOWNS_HAVE_MINIZIP
@@ -677,6 +707,44 @@ std::string best_floppy(const std::string &dir)
 	return std::string();
 }
 
+/* An extraction written before the floppy code is stale: it holds the CD
+ * but not the boot disk, and the shelf must not keep offering it.  Removes
+ * every folder under [cd_dir] that carries the old marker but not the new
+ * one, so the next boot re-extracts the archive whole. */
+void clean_stale_stages(const std::string &cd_dir)
+{
+	if(cd_dir.empty())
+	{
+		return;
+	}
+	int n=0;
+	char **found=SDL_GlobDirectory(cd_dir.c_str(),nullptr,SDL_GLOB_CASEINSENSITIVE,&n);
+	for(int i=0; nullptr!=found && i<n && found[i]; ++i)
+	{
+		if(nullptr!=SDL_strchr(found[i],'/'))
+		{
+			continue;
+		}
+		const std::string dir=cd_dir+"/"+found[i];
+		SDL_PathInfo info;
+		if(!SDL_GetPathInfo(dir.c_str(),&info) || SDL_PATHTYPE_DIRECTORY!=info.type)
+		{
+			continue;
+		}
+		const std::string v1=dir+"/.retrotowns-staged";
+		const std::string v2=dir+"/.retrotowns-staged-v2";
+		SDL_PathInfo a,b;
+		if(SDL_GetPathInfo(v1.c_str(),&a) && !SDL_GetPathInfo(v2.c_str(),&b))
+		{
+			remove_tree(dir);
+		}
+	}
+	if(found)
+	{
+		SDL_free(found);
+	}
+}
+
 std::string stage_dir_for(const std::string &image,const std::string &cd_dir)
 {
 	if(cd_dir.empty())
@@ -712,6 +780,8 @@ std::string stage_image(const std::string &image,const std::string &cd_dir,
 			return have;
 		}
 	}
+	/* Re-extracting: clear whatever the previous (floppy-less) run left. */
+	remove_tree(dir);
 
 #ifdef TOWNS_HAVE_MINIZIP
 	if(".zip"==ext_of(image))
