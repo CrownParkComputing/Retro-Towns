@@ -252,6 +252,70 @@ namespace icon
 	};
 } /* namespace icon */
 
+/* The three brand colours, kept in one place so the icon, the logo and the
+ * accent states cannot drift apart.  Teal is the machine; pink and yellow are
+ * the sheen a CD throws. */
+constexpr ImVec4 kTeal(0.34f,0.85f,0.77f,1.0f);
+constexpr ImVec4 kPink(1.00f,0.38f,0.47f,1.0f);
+constexpr ImVec4 kYellow(1.00f,0.78f,0.36f,1.0f);
+
+/* The theme.  ImGui ships a debug-overlay grey; this trades it for the cold
+ * ink and teal of the machine, with pink and yellow as the accent lights. */
+void apply_style()
+{
+	ImGuiStyle &s=ImGui::GetStyle();
+	s.WindowRounding=0.0f;
+	s.FrameRounding=3.0f;
+	s.GrabRounding=3.0f;
+	s.TabRounding=3.0f;
+	s.FramePadding=ImVec2(10.0f,7.0f);
+	s.ItemSpacing=ImVec2(9.0f,7.0f);
+	s.WindowPadding=ImVec2(14.0f,12.0f);
+	s.ScrollbarSize=14.0f;
+
+	ImVec4 *c=s.Colors;
+	const ImVec4 ink   =ImVec4(0.03f,0.03f,0.05f,1.00f);
+	const ImVec4 panel =ImVec4(0.07f,0.07f,0.11f,1.00f);
+	const ImVec4 raised=ImVec4(0.11f,0.11f,0.17f,1.00f);
+	const ImVec4 teal  =kTeal;
+	const ImVec4 tealDim=ImVec4(kTeal.x,kTeal.y,kTeal.z,0.35f);
+	const ImVec4 pink  =kPink;
+	const ImVec4 yellow=kYellow;
+
+	c[ImGuiCol_WindowBg]       =ink;
+	c[ImGuiCol_ChildBg]        =panel;
+	c[ImGuiCol_PopupBg]        =panel;
+	c[ImGuiCol_Border]         =ImVec4(0.20f,0.20f,0.28f,1.00f);
+	c[ImGuiCol_FrameBg]        =raised;
+	c[ImGuiCol_FrameBgHovered] =ImVec4(0.18f,0.18f,0.26f,1.00f);
+	c[ImGuiCol_FrameBgActive]  =ImVec4(0.22f,0.22f,0.32f,1.00f);
+	c[ImGuiCol_Button]         =raised;
+	c[ImGuiCol_ButtonHovered]  =ImVec4(0.20f,0.20f,0.30f,1.00f);
+	c[ImGuiCol_ButtonActive]   =teal;
+	c[ImGuiCol_Header]         =tealDim;
+	c[ImGuiCol_HeaderHovered]  =ImVec4(0.20f,0.20f,0.30f,1.00f);
+	c[ImGuiCol_HeaderActive]   =teal;
+	c[ImGuiCol_Separator]      =ImVec4(0.20f,0.20f,0.28f,1.00f);
+	c[ImGuiCol_Text]           =ImVec4(0.90f,0.90f,0.94f,1.00f);
+	c[ImGuiCol_TextDisabled]   =ImVec4(0.55f,0.57f,0.62f,1.00f);
+	c[ImGuiCol_CheckMark]      =teal;
+	c[ImGuiCol_SliderGrab]     =teal;
+	c[ImGuiCol_SliderGrabActive]=pink;
+	c[ImGuiCol_Tab]            =raised;
+	c[ImGuiCol_TabHovered]     =teal;
+	c[ImGuiCol_TabSelected]    =tealDim;
+	c[ImGuiCol_TabDimmed]      =raised;
+	c[ImGuiCol_TabDimmedSelected]=tealDim;
+	c[ImGuiCol_ScrollbarBg]    =panel;
+	c[ImGuiCol_ScrollbarGrab]  =raised;
+	c[ImGuiCol_ScrollbarGrabHovered]=ImVec4(0.20f,0.20f,0.30f,1.00f);
+	c[ImGuiCol_ScrollbarGrabActive]=teal;
+	c[ImGuiCol_TextSelectedBg] =tealDim;
+	c[ImGuiCol_PlotLines]      =teal;
+	c[ImGuiCol_PlotHistogram]  =teal;
+	c[ImGuiCol_NavHighlight]   =yellow;
+}
+
 namespace {
 
 void draw_icon(ImDrawList *dl,const ImVec2 &c,float r,int kind,ImU32 col)
@@ -997,6 +1061,9 @@ int main(int argc,char *argv[])
 	fontCfg.SizePixels=SDL_min(SDL_max(13.0f*ui_scale*1.35f,17.55f),48.0f);
 	io.Fonts->AddFontDefault(&fontCfg);
 
+	/* Colours and authored sizes first, then scaled to the real font size. */
+	apply_style();
+
 	/* The style's paddings, spacings and scrollbar are all in units of the
 	 * 13-pixel font, so they scale with the font, not the display. */
 	ImGui::GetStyle().ScaleAllSizes(fontCfg.SizePixels/13.0f);
@@ -1643,12 +1710,34 @@ int main(int argc,char *argv[])
 		ImGui::BeginChild("##rail",ImVec2(rail_w,0),ImGuiChildFlags_Borders);
 		ImGui::Spacing();
 		{
+			/* The wordmark, split into three runs so it carries the brand
+			 * colours, with a three-segment underline beneath it. */
 			const float w = ImGui::GetContentRegionAvail().x;
-			const char *logo_text = "RETRO-TOWNS";
-			ImGui::SetCursorPosX((w - ImGui::CalcTextSize(logo_text).x) * 0.5f + ImGui::GetCursorPosX());
-			ImGui::TextColored(ImVec4(0.2f, 0.85f, 0.77f, 1.0f), "%s", logo_text);
+			ImDrawList *dl=ImGui::GetWindowDrawList();
+			const ImVec2 cs=ImGui::GetCursorScreenPos();
+			const float total=ImGui::CalcTextSize("RETRO-TOWNS").x;
+			float x=cs.x+(w-total)*0.5f;
+			const float y=cs.y;
+
+			const ImVec4 silver(0.80f,0.84f,0.90f,1.0f);
+			dl->AddText(ImVec2(x,y),ImGui::GetColorU32(silver),"RETRO");
+			x+=ImGui::CalcTextSize("RETRO").x;
+			dl->AddText(ImVec2(x,y),ImGui::GetColorU32(kYellow),"-");
+			x+=ImGui::CalcTextSize("-").x;
+			dl->AddText(ImVec2(x,y),ImGui::GetColorU32(kTeal),"TOWNS");
+
+			const float uy=y+ImGui::GetFontSize()+4.0f;
+			const float u0=cs.x+(w-total)*0.5f;
+			const float seg=total/3.0f;
+			dl->AddRectFilled(ImVec2(u0,uy),ImVec2(u0+seg,uy+2.0f),
+			                  ImGui::GetColorU32(kPink));
+			dl->AddRectFilled(ImVec2(u0+seg,uy),ImVec2(u0+2.0f*seg,uy+2.0f),
+			                  ImGui::GetColorU32(kYellow));
+			dl->AddRectFilled(ImVec2(u0+2.0f*seg,uy),ImVec2(u0+total,uy+2.0f),
+			                  ImGui::GetColorU32(kTeal));
+
+			ImGui::Dummy(ImVec2(0.0f,ImGui::GetFontSize()+8.0f));
 		}
-		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
 		if(!locked)
