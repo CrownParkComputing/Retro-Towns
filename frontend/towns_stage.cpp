@@ -131,13 +131,13 @@ bool is_dir(const std::string &path)
 bool already_staged(const std::string &dir)
 {
 	SDL_PathInfo info;
-	const std::string mark=dir+"/.retrotowns-staged-v2";
+	const std::string mark=dir+"/.retrotowns-staged-v3";
 	return SDL_GetPathInfo(mark.c_str(),&info) && SDL_PATHTYPE_FILE==info.type;
 }
 
 void mark_staged(const std::string &dir,const std::string &from)
 {
-	SDL_IOStream *out=SDL_IOFromFile((dir+"/.retrotowns-staged-v2").c_str(),"wb");
+	SDL_IOStream *out=SDL_IOFromFile((dir+"/.retrotowns-staged-v3").c_str(),"wb");
 	if(nullptr==out)
 	{
 		return;
@@ -322,7 +322,9 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 			{
 				images.push_back(name);
 			}
-			else if(".d77"==ext || ".d88"==ext || ".xdf"==ext)
+			else if(".d77"==ext || ".d88"==ext || ".xdf"==ext || ".fdi"==ext ||
+			        ".hdm"==ext || ".fdd"==ext || ".2hd"==ext || ".dup"==ext ||
+			        ".tfd"==ext)
 			{
 				floppies.push_back(name);
 			}
@@ -350,6 +352,34 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 		want=images;
 	}
 
+	/* Boot/user disks are the floppy formats, plus any raw .bin/.img the sheet
+	 * does not name - a FM TOWNS boot disk is a 1.25MB raw image. */
+	std::vector <std::string> boot=floppies;
+	if(!sheet.empty())
+	{
+		for(const std::string &image : images)
+		{
+			const std::string iext=ext_of(image);
+			if(".bin"!=iext && ".img"!=iext)
+			{
+				continue;
+			}
+			bool named=false;
+			for(const std::string &name : declared)
+			{
+				if(lower(image)==lower(name) || lower(leaf_of(image))==lower(name))
+				{
+					named=true;
+					break;
+				}
+			}
+			if(!named)
+			{
+				boot.push_back(image);
+			}
+		}
+	}
+
 	int64_t total=sheet_size;
 	for(const std::string &name : want)
 	{
@@ -360,7 +390,7 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 			total+=(int64_t)info.uncompressed_size;
 		}
 	}
-	for(const std::string &name : floppies)
+	for(const std::string &name : boot)
 	{
 		unz_file_info64 info;
 		if(UNZ_OK==unzLocateFile(z,name.c_str(),0) &&
@@ -402,13 +432,23 @@ std::string unzip_disc(const std::string &zip,const std::string &dir,
 		}
 		ok = copy_entry(z,name,dir,&done,total,progress) && ok;
 	}
-	for(const std::string &name : floppies)
+	for(const std::string &name : boot)
 	{
 		if(UNZ_OK!=unzLocateFile(z,name.c_str(),0))
 		{
 			continue;
 		}
 		ok = copy_entry(z,name,dir,&done,total,progress) && ok;
+	}
+	if(!boot.empty())
+	{
+		SDL_IOStream *m=SDL_IOFromFile((dir+"/.retrotowns-boot").c_str(),"wb");
+		if(m)
+		{
+			const std::string leaf=leaf_of(boot[0]);
+			SDL_WriteIO(m,leaf.data(),leaf.size());
+			SDL_CloseIO(m);
+		}
 	}
 	unzClose(z);
 
@@ -672,10 +712,29 @@ std::string chd_disc(const std::string &chd,const std::string &dir,
 
 std::string best_floppy(const std::string &dir)
 {
-	/* A boot or user disk is a floppy beside the CD, named .d77, .d88 or .xdf.
-	 * The core mounts it in FD0 before the CD, so the bootloader can run and
-	 * then hand control to the disc. */
-	static const char *const kFloppy[]={".d77",".d88",".xdf",nullptr};
+	/* A zip extraction records its boot disk explicitly, so a raw .bin boot
+	 * image is not mistaken for the CD track beside it. */
+	{
+		SDL_IOStream *m=SDL_IOFromFile((dir+"/.retrotowns-boot").c_str(),"rb");
+		if(m)
+		{
+			char buf[512]={};
+			const size_t got=SDL_ReadIO(m,buf,sizeof(buf)-1);
+			SDL_CloseIO(m);
+			if(0<got)
+			{
+				const std::string p=dir+"/"+std::string(buf,got);
+				SDL_PathInfo info;
+				if(SDL_GetPathInfo(p.c_str(),&info) && SDL_PATHTYPE_FILE==info.type)
+				{
+					return p;
+				}
+			}
+		}
+	}
+
+	/* Otherwise the unambiguous floppy formats. */
+	static const char *const kFloppy[]={".d77",".d88",".xdf",".fdi",".hdm",".fdd",".2hd",".dup",".tfd",nullptr};
 	for(const char *const *e=kFloppy; *e; ++e)
 	{
 		const std::string pattern="*"+std::string(*e);
@@ -733,8 +792,12 @@ void clean_stale_stages(const std::string &cd_dir)
 		}
 		const std::string v1=dir+"/.retrotowns-staged";
 		const std::string v2=dir+"/.retrotowns-staged-v2";
-		SDL_PathInfo a,b;
-		if(SDL_GetPathInfo(v1.c_str(),&a) && !SDL_GetPathInfo(v2.c_str(),&b))
+		const std::string v3=dir+"/.retrotowns-staged-v3";
+		SDL_PathInfo a,b,c;
+		const bool has_v1=SDL_GetPathInfo(v1.c_str(),&a);
+		const bool has_v2=SDL_GetPathInfo(v2.c_str(),&b);
+		const bool has_v3=SDL_GetPathInfo(v3.c_str(),&c);
+		if((has_v1 || has_v2) && !has_v3)
 		{
 			remove_tree(dir);
 		}
